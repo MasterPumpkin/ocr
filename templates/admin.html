@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Admin Dashboard</title>
+</head>
+<body>
+    <h1>Administrace</h1>
+    <h2>Nahrát CSV soubor</h2>
+    <form method="POST" enctype="multipart/form-data">
+        {{ upload_form.hidden_tag() }}
+        {{ upload_form.file.label }} {{ upload_form.file }}<br>
+        {{ upload_form.submit }}
+    </form>
+
+    <h2>Aktualizovat konfiguraci markerů</h2>
+    <form method="POST">
+        {{ config_form.hidden_tag() }}
+        {{ config_form.start_marker.label }} {{ config_form.start_marker }}<br>
+        {{ config_form.end_marker.label }} {{ config_form.end_marker }}<br>
+        {{ config_form.submit }}
+    </form>
+
+    {% if current_config %}
+        <p>Aktuální konfigurace:</p>
+        <p>Start Marker: {{ current_config.start_marker }}</p>
+        <p>End Marker: {{ current_config.end_marker }}</p>
+    {% endif %}
+</body>
+</html>
+

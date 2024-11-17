@@ -1,0 +1,15 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Přihlášení</title>
+</head>
+<body>
+    <h1>Přihlášení</h1>
+    <form method="POST">
+        {{ form.hidden_tag() }}
+        {{ form.username.label }} {{ form.username }}<br>
+        {{ form.password.label }} {{ form.password }}<br>
+        {{ form.submit }}
+    </form>
+</body>
+</html>
