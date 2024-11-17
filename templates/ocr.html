@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Čtečka alfanumerických kódů</title>
+  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@2.1.1/dist/tesseract.min.js"></script>
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: Arial, sans-serif;
+      text-align: center;
+      padding: 16px;
+      background-color: #f5f5f5;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      font-size: 1.5rem;
+      margin-bottom: 20px;
+      color: #333;
+    }
+
+    .video-container {
+      width: 100%;
+      max-width: 500px;
+      margin-bottom: 20px;
+      background: #000;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    video {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    canvas {
+      display: none;
+    }
+
+    .button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 16px 32px;
+      font-size: 1.2rem;
+      border-radius: 50px;
+      cursor: pointer;
+      margin: 10px 0;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      transition: all 0.3s ease;
+      width: 80%;
+      max-width: 300px;
+    }
+
+    .button:active {
+      transform: scale(0.98);
+      background-color: #0056b3;
+    }
+
+    .button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    .result-container {
+      background: white;
+      padding: 16px;
+      border-radius: 8px;
+      margin-top: 20px;
+      width: 90%;
+      max-width: 500px;
+      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    }
+
+    .result-box {
+      margin: 10px 0;
+      padding: 10px;
+      background: #f8f9fa;
+      border-radius: 4px;
+      border: 1px solid #dee2e6;
+    }
+
+    strong {
+      color: #007bff;
+      word-break: break-all;
+    }
+
+    .extracted {
+      color: #28a745;
+      font-weight: bold;
+    }
+
+    @media (max-width: 480px) {
+      h1 {
+        font-size: 1.25rem;
+      }
+      
+      .button {
+        font-size: 1.1rem;
+        padding: 14px 28px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Čtečka alfanumerických kódů</h1>
+  <div class="video-container">
+    <video id="video" autoplay playsinline></video>
+  </div>
+  <button id="capture" class="button">Skenovat kód</button>
+  <button id="sendData" class="button" style="background-color: #28a745;" disabled>Odeslat data</button>
+  <canvas id="canvas"></canvas>
+  <div class="result-container">
+    <div class="result-box">
+      <p>Celý text: <strong id="fullText">-</strong></p>
+    </div>
+    <div class="result-box">
+      <p>Extrahovaný kód: <span id="extractedText" class="extracted">-</span></p>
+    </div>
+  </div>
+
+  <script>
+    const video = document.getElementById('video');
+    const canvas = document.getElementById('canvas');
+    const fullTextElement = document.getElementById('fullText');
+    const extractedTextElement = document.getElementById('extractedText');
+    const captureButton = document.getElementById('capture');
+    const sendDataButton = document.getElementById('sendData');
+
+    const CONFIG = {
+      startMarker: '###',
+      endMarker: '###',
+      targetUrl: 'https://ocr-amber.vercel.app/api'
+    };
+
+    // Načtení dynamických markerů ze serveru
+    async function fetchMarkers() {
+      try {
+        const response = await fetch(`${CONFIG.targetUrl}/config`);
+        if (!response.ok) {
+          throw new Error("Nepodařilo se načíst konfiguraci markerů");
+        }
+        const config = await response.json();
+        CONFIG.startMarker = config.startMarker;
+        CONFIG.endMarker = config.endMarker;
+      } catch (error) {
+        console.error("Chyba při načítání markerů:", error);
+      }
+    }
+
+    // Inicializace kamery
+    async function initCamera() {
+      try {
+        const constraints = {
+          video: {
+            facingMode: "environment",
+            width: { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        };
+        
+        const stream = await navigator.mediaDevices.getUserMedia(constraints);
+        video.srcObject = stream;
+        await video.play();
+      } catch (err) {
+        console.error("Chyba při přístupu ke kameře:", err);
+        alert("Nelze přistupovat ke kameře. Zkontrolujte oprávnění nebo použijte HTTPS.");
+      }
+    }
+
+    // Extrakce specifického textu
+    function extractSpecificText(text) {
+      const regex = new RegExp(`${CONFIG.startMarker}(.*?)${CONFIG.endMarker}`, 's');
+      const match = text.match(regex);
+      return match ? match[1].trim() : null;
+    }
+
+    // Indikátor načítání
+    function setLoading(isLoading) {
+      captureButton.disabled = isLoading;
+      captureButton.style.backgroundColor = isLoading ? '#ccc' : '#007bff';
+      captureButton.textContent = isLoading ? 'Zpracovávám...' : 'Skenovat kód';
+    }
+
+    // Odeslání dat na server
+    async function sendDataToServer(extractedText) {
+      try {
+        const response = await fetch(`${CONFIG.targetUrl}/check`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ code: extractedText })
+        });
+        
+        if (!response.ok) {
+          throw new Error('Chyba při odesílání dat');
+        }
+
+        const result = await response.json();
+        if (result.found) {
+          alert('Kód byl nalezen!');
+        } else {
+          alert('Kód nebyl nalezen!');
+        }
+
+        sendDataButton.disabled = true;
+      } catch (error) {
+        console.error('Chyba při odesílání:', error);
+        alert('Nepodařilo se odeslat data. Zkuste to prosím znovu.');
+      }
+    }
+
+    // Inicializace aplikace
+    (async () => {
+      await fetchMarkers(); // Načtení dynamických markerů
+      initCamera();
+    })();
+
+    // Event listener pro tlačítko skenování
+    captureButton.addEventListener('click', async () => {
+      setLoading(true);
+      
+      try {
+        const context = canvas.getContext('2d');
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        context.drawImage(video, 0, 0, canvas.width, canvas.height);
+        
+        const imageData = canvas.toDataURL('image/png');
+
+        const { data: { text } } = await Tesseract.recognize(imageData, 'eng', {
+          logger: m => console.log(m)
+        });
+
+        const fullText = text.trim();
+        const extractedText = extractSpecificText(fullText);
+
+        fullTextElement.textContent = fullText || 'Nebyl rozpoznán žádný text';
+        extractedTextElement.textContent = extractedText || 'Nebyl nalezen specifický kód';
+        
+        sendDataButton.disabled = !extractedText;
+      } catch (error) {
+        console.error("Chyba při OCR:", error);
+        fullTextElement.textContent = 'Chyba při rozpoznávání textu';
+        extractedTextElement.textContent = '-';
+        sendDataButton.disabled = true;
+      } finally {
+        setLoading(false);
+      }
+    });
+
+    // Event listener pro tlačítko odeslání
+    sendDataButton.addEventListener('click', () => {
+      const extractedText = extractedTextElement.textContent;
+      if (extractedText && extractedText !== '-') {
+        sendDataToServer(extractedText);
+      }
+    });
+  </script>
+</body>
+</html>

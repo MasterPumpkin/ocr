@@ -53,6 +53,10 @@ def is_logged_in():
 def index():
     return render_template('index.html')
 
+@app.route('/ocr')
+def ocr():
+    return render_template('ocr.html')
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     form = LoginForm()
